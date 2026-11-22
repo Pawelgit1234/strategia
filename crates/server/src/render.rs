@@ -1,5 +1,6 @@
-use crate::config::TILE_SIZE;
+use crate::{config::{BRIGHTNESS_FACTOR, PERLIN_SCALE, TILE_SIZE}, settings::GameSettings};
 use bevy::prelude::*;
+use noise::{NoiseFn, Worley};
 
 use crate::world_map::WorldMap;
 
@@ -7,18 +8,49 @@ pub fn render_setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
 
-pub fn render_world(mut commands: Commands, world: Res<WorldMap>) {
+fn worley_color(overlay: &Worley, color: u32, x: usize, y: usize) -> Color {
+    let value = overlay.get([
+        x as f64 * PERLIN_SCALE,
+        y as f64 * PERLIN_SCALE,
+    ]) as f32;
+
+    let brightness = (1.0 + value * BRIGHTNESS_FACTOR)
+        .clamp(0.5, 1.5);
+
+    let mut hsva = Hsva::from(Color::srgb_u32(color));
+
+    hsva.value = (hsva.value * brightness).clamp(0.0, 1.0);
+
+    Color::from(hsva)
+}
+
+pub fn render_world(
+    mut commands: Commands,
+    world: Res<WorldMap>,
+    settings: Res<GameSettings>,
+) {
+    let overlay = Worley::new(settings.seed);
+
     for y in 0..world.height {
         for x in 0..world.width {
-            let tile = world.get(x, y).unwrap();
-
-            let color = match tile {
-                -128..-1 => Color::srgb(0.1, 0.3, 0.8),
-                -1..2 => Color::srgb(0.85, 0.75, 0.45),
-                2..80 => Color::srgb(0.2, 0.65, 0.2),
-                80..90 => Color::srgb(0.05, 0.35, 0.1),
-                90..=127 => Color::srgb(0.45, 0.45, 0.45),
+            let Some(tile) = world.get(x, y) else {
+                continue;
             };
+
+            let base_color = match tile {
+                -128..-70 => 0x123C65,
+                -70..-35  => 0x1B6385,
+                -35..-10  => 0x2485A6,
+                -10..-5   => 0xE3C054,
+                -5..20    => 0xA1BF41,
+                20..40    => 0x55A058,
+                40..55    => 0x1E7453,
+                55..70    => 0x878573,
+                70..90    => 0x69645F,
+                90..=127  => 0xF5F3E8,
+            };
+
+            let color = worley_color(&overlay, base_color, x, y);
 
             commands.spawn((
                 Sprite {
